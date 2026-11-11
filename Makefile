@@ -1,4 +1,4 @@
-include .env
+-include .env
 
 .PHONY: db/up db/migrate db/reset run/wallet
 
@@ -13,4 +13,4 @@ db/reset:
 	migrate -path migrations -database "$(LEDGER_DB_DSN)" up
 
 run/wallet:
-	go run ./cmd/wallet
+	go run ./cmd/wallet -db-dsn="$(LEDGER_DB_DSN)"
