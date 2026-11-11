@@ -6,18 +6,17 @@ import (
 	"os"
 )
 
+type application struct {
+	logger *slog.Logger
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /v1/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add("Content-Type", "application/json")
-		w.Write([]byte(`{"status": "ok"}` + "\n"))
-	})
+	app := &application{logger: logger}
 
 	logger.Info("starting server", "addr", ":4000")
-	err := http.ListenAndServe(":4000", mux)
+	err := http.ListenAndServe(":4000", app.routes())
 	logger.Error("server stopped", "error", err)
 	os.Exit(1)
 }
