@@ -110,7 +110,7 @@ type lockedAccount struct {
 }
 
 func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) (Transfer, error) {
-	if amount < 0 {
+	if amount <= 0 {
 		return Transfer{}, ErrInvalidAmount
 	}
 

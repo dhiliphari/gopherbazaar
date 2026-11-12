@@ -1,6 +1,6 @@
 -include .env
 
-.PHONY: db/up db/migrate db/reset run/wallet load
+.PHONY: db/up db/migrate db/reset run/wallet load test test/short
 
 db/up:
 	docker compose up -d --wait
@@ -17,3 +17,9 @@ run/wallet:
 
 load:
 	go run ./cmd/loadgen $(ARGS)
+
+test:
+	go test -race -count=1 ./...
+
+test/short:
+	go test -short -race -count=1 ./...
