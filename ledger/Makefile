@@ -18,10 +18,10 @@ build:
 	go build -o ./bin/ ./cmd/...
 
 run/accounts:
-	go run ./cmd/accounts
+	go run ./cmd/accounts -db-dsn $(ACCOUNTS_DB_DSN)
 
 run/transfers:
-	go run ./cmd/transfers
+	go run ./cmd/transfers -db-dsn $(TRANSFERS_DB_DSN)
 
 load:
 	go run ./cmd/loadgen $(ARGS)
