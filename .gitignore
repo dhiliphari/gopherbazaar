@@ -1,1 +1,8 @@
+# Build output
+bin/
+
+# Local configuration and secrets: never commit these.
 .env
+.envrc
+secrets/
+*.pem
