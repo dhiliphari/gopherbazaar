@@ -12,17 +12,19 @@ import (
 )
 
 type config struct {
-	baseURL   string
-	accounts  int
-	deposit   int64
-	workers   int
-	transfers int
-	maxAmount int64
+	accountsURL  string
+	transfersURL string
+	accounts     int
+	deposit      int64
+	workers      int
+	transfers    int
+	maxAmount    int64
 }
 
 func main() {
 	var cfg config
-	flag.StringVar(&cfg.baseURL, "base-url", "http://localhost:4000", "wallet base URL")
+	flag.StringVar(&cfg.accountsURL, "accounts-url", "http://localhost:4001", "accounts service base URL")
+	flag.StringVar(&cfg.transfersURL, "transfers-url", "http://localhost:4002", "transfers service base URL")
 	flag.IntVar(&cfg.accounts, "accounts", 10, "number of accounts to open")
 	flag.Int64Var(&cfg.deposit, "deposit", 10_000, "opening deposit per account (cents)")
 	flag.IntVar(&cfg.workers, "workers", 50, "concurrent workers")
@@ -37,7 +39,11 @@ func main() {
 }
 
 func run(cfg config) error {
-	c := &client{base: cfg.baseURL, http: &http.Client{Timeout: 10 * time.Second}}
+	c := &client{
+		accounts:  cfg.accountsURL,
+		transfers: cfg.transfersURL,
+		http:      &http.Client{Timeout: 10 * time.Second},
+	}
 
 	ids := make([]int64, cfg.accounts)
 	for i := range cfg.accounts {
