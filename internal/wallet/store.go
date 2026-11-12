@@ -34,6 +34,13 @@ type Transfer struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
+// Mismatch is an account whose cached balance disagrees with its ledger entries.
+type Mismatch struct {
+	AccountID     int64 `json:"account_id"`
+	Balance       int64 `json:"balance"`
+	LedgerBalance int64 `json:"ledger_balance"`
+}
+
 type Store struct {
 	db *pgxpool.Pool
 }
@@ -193,4 +200,22 @@ func (s *Store) TotalBalance(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("sum balances: %w", err)
 	}
 	return total, nil
+}
+
+// Reconcile returns every account whose cached balance disagrees with the
+// sum of its ledger entries. An empty result means the books balance.
+func (s *Store) Reconcile(ctx context.Context) ([]Mismatch, error) {
+	// LEFT JOIN keeps accounts with no entries (an account opened with a zero deposit)
+	rows, err := s.db.Query(ctx, `
+		SELECT a.id, a.balance, COALESCE(SUM(e.amount), 0)::bigint
+		FROM accounts a
+		LEFT JOIN entries e on e.account_id = a.id
+		GROUP BY a.id
+		HAVING a.balance <> COALESCE(SUM(e.amount), 0)`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("reconcile: %w", err)
+	}
+
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[Mismatch])
 }

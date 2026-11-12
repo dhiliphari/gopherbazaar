@@ -91,3 +91,15 @@ func (app *application) totalBalance(w http.ResponseWriter, r *http.Request) {
 	}
 	app.writeJSON(w, http.StatusOK, envelope{"total": total})
 }
+
+func (app *application) reconcile(w http.ResponseWriter, r *http.Request) {
+	mismatches, err := app.wallet.Reconcile(r.Context())
+	if err != nil {
+		app.serverError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, envelope{
+		"balanced":   len(mismatches) == 0,
+		"mismatches": mismatches,
+	})
+}
