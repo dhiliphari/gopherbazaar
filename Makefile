@@ -1,6 +1,6 @@
 -include .env
 
-.PHONY: db/up db/migrate db/reset run/wallet
+.PHONY: db/up db/migrate db/reset run/wallet load
 
 db/up:
 	docker compose up -d --wait
@@ -14,3 +14,6 @@ db/reset:
 
 run/wallet:
 	go run ./cmd/wallet -db-dsn="$(LEDGER_DB_DSN)"
+
+load:
+	go run ./cmd/loadgen $(ARGS)
