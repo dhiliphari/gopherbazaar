@@ -26,6 +26,14 @@ type Account struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Transfer struct {
+	ID            int64     `json:"id"`
+	FromAccountID int64     `json:"from_account_id"`
+	ToAccountID   int64     `json:"to_account_id"`
+	Amount        int64     `json:"amount"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type Store struct {
 	db *pgxpool.Pool
 }
@@ -74,6 +82,11 @@ func (s *Store) GetAccount(ctx context.Context, id int64) (Account, error) {
 	return a, nil
 }
 
+type lockedAccount struct {
+	ID      int64
+	Balance int64
+}
+
 func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error {
 	if amount < 0 {
 		return ErrInvalidAmount
@@ -83,41 +96,49 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error 
 		return ErrSameAccount
 	}
 
-	from, err := s.GetAccount(ctx, fromID)
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT id, balance
+			FROM accounts
+			WHERE id = ANY($1)
+			ORDER BY id
+			FOR UPDATE`,
+			[]int64{fromID, toID},
+)
 	if err != nil {
-		return err
+		return fmt.Errorf("lock accounts: %w", err)
 	}
 
-	to, err := s.GetAccount(ctx, toID)
+	locked, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lockedAccount])
 	if err != nil {
-		return err
-	}
+		return fmt.Errorf("lock accounts: %w", err)
+		}
+		if len(locked) != 2 {
+			return ErrNotFound
+		}
 
-	if from.Balance < amount {
+		var fromBalance int64
+		for _, acc := range locked {
+			if acc.ID == fromID {
+				fromBalance = acc.Balance
+			}
+		}
+		if fromBalance < amount {
 		return ErrInsufficientFunds
 	}
 
-	_, err = s.db.Exec(ctx, `
-		UPDATE accounts SET balance = $1
-		WHERE id = $2`,
-		from.Balance-amount,
-		from.ID,
-	)
+	_, err = tx.Exec(ctx, `		UPDATE accounts SET balance = balance - $1 		WHERE id = $2`, amount, 		fromID	)
 	if err != nil {
-		return fmt.Errorf("debit %d: %w", from.ID, err)
+		return fmt.Errorf("debit %d: %w", fromID, err)
 	}
 
-	_, err = s.db.Exec(ctx, `
-		UPDATE accounts SET balance = $1
-		WHERE id = $2`,
-		to.Balance+amount,
-		to.ID,
-	)
+	_, err = tx.Exec(ctx, `		UPDATE accounts SET balance = balance + $1 		WHERE id = $2`, amount, toID	)
 	if err != nil {
-		return fmt.Errorf("credit %d: %w", to.ID, err)
+		return fmt.Errorf("credit %d: %w", fromID, err)
 	}
 
 	return nil
+})
 }
 
 // TotalBalance returns the sum of every balance. If money is neither created
