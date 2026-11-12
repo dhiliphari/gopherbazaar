@@ -13,5 +13,5 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("POST /v1/transfers", app.createTransfer)
 	mux.HandleFunc("GET /v1/stats/total", app.totalBalance)
 
-	return mux
+	return app.logRequests(mux)
 }
