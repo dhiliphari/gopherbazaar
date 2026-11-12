@@ -119,3 +119,17 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error 
 
 	return nil
 }
+
+// TotalBalance returns the sum of every balance. If money is neither created
+// nor destroyed, this only changes when accounts are opened.
+func (s *Store) TotalBalance(ctx context.Context) (int64, error) {
+	var total int64
+	// SUM(bigint) returns numeric in Postgres, so cast it back to bigint.
+	err := s.db.QueryRow(ctx,
+		`SELECT COALESCE(SUM(balance), 0)::bigint FROM accounts`,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum balances: %w", err)
+	}
+	return total, nil
+}

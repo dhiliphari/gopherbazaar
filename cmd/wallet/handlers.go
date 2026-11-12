@@ -82,3 +82,12 @@ func (app *application) createTransfer(w http.ResponseWriter, r *http.Request) {
 		app.writeJSON(w, http.StatusCreated, envelope{"status": "completed"})
 	}
 }
+
+func (app *application) totalBalance(w http.ResponseWriter, r *http.Request) {
+	total, err := app.wallet.TotalBalance(r.Context())
+	if err != nil {
+		app.serverError(w, r, err)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, envelope{"total": total})
+}

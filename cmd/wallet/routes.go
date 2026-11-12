@@ -11,6 +11,7 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /v1/accounts/{id}", app.getAccount)
 
 	mux.HandleFunc("POST /v1/transfers", app.createTransfer)
+	mux.HandleFunc("GET /v1/stats/total", app.totalBalance)
 
 	return mux
 }
