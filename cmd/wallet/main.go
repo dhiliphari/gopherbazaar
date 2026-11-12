@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gopherbazaar/ledger/internal/wallet"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -18,6 +19,7 @@ type config struct {
 
 type application struct {
 	logger *slog.Logger
+	wallet *wallet.Store
 }
 
 func main() {
@@ -36,7 +38,10 @@ func main() {
 	defer db.Close()
 	logger.Info("database connected")
 
-	app := &application{logger: logger}
+	app := &application{
+		logger: logger,
+		wallet: wallet.NewStore(db),
+	}
 
 	logger.Info("starting server", "addr", ":4000")
 	err = http.ListenAndServe(cfg.addr, app.routes())
