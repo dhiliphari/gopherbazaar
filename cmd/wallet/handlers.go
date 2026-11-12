@@ -68,7 +68,7 @@ func (app *application) createTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := app.wallet.Transfer(r.Context(), input.FromAccountID, input.ToAccountID, input.Amount)
+	transfer, err := app.wallet.Transfer(r.Context(), input.FromAccountID, input.ToAccountID, input.Amount)
 	switch {
 	case errors.Is(err, wallet.ErrNotFound):
 		app.errorResponse(w, http.StatusNotFound, err.Error())
@@ -79,7 +79,7 @@ func (app *application) createTransfer(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		app.serverError(w, r, err)
 	default:
-		app.writeJSON(w, http.StatusCreated, envelope{"status": "completed"})
+		app.writeJSON(w, http.StatusCreated, envelope{"transfer": transfer})
 	}
 }
 

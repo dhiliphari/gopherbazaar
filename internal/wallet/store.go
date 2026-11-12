@@ -48,18 +48,33 @@ func (s *Store) CreateAccount(ctx context.Context, owner string, openingDeposit 
 	}
 
 	var a Account
-	err := s.db.QueryRow(ctx, `
-		INSERT INTO accounts (owner, balance)
-		VALUES ($1, $2)
-		RETURNING id, owner, balance, currency, created_at`,
-		owner, openingDeposit,
-	).Scan(&a.ID, &a.Owner, &a.Balance, &a.Currency, &a.CreatedAt)
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			INSERT INTO accounts (owner, balance)
+			VALUES ($1, $2)
+			RETURNING id, owner, balance, currency, created_at`,
+			owner, openingDeposit,
+		).Scan(&a.ID, &a.Owner, &a.Balance, &a.Currency, &a.CreatedAt)
 
-	if err != nil {
-		return Account{}, fmt.Errorf("insert amount: %w", err)
-	}
+		if err != nil {
+			return fmt.Errorf("insert amount: %w", err)
+		}
 
-	return a, nil
+		// no entires for zero deposit
+		if openingDeposit > 0 {
+			_, err = tx.Exec(ctx,
+				`INSERT INTO entries (account_id, amount) VALUES ($1, $2)`,
+				a.ID, openingDeposit,
+			)
+			if err != nil {
+				return fmt.Errorf("insert deposit entry: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	return a, err
 }
 
 func (s *Store) GetAccount(ctx context.Context, id int64) (Account, error) {
@@ -87,16 +102,17 @@ type lockedAccount struct {
 	Balance int64
 }
 
-func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error {
+func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) (Transfer, error) {
 	if amount < 0 {
-		return ErrInvalidAmount
+		return Transfer{}, ErrInvalidAmount
 	}
 
 	if fromID == toID {
-		return ErrSameAccount
+		return Transfer{}, ErrSameAccount
 	}
 
-	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+	var t Transfer
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT id, balance
 			FROM accounts
@@ -104,14 +120,14 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error 
 			ORDER BY id
 			FOR UPDATE`,
 			[]int64{fromID, toID},
-)
-	if err != nil {
-		return fmt.Errorf("lock accounts: %w", err)
-	}
+		)
+		if err != nil {
+			return fmt.Errorf("lock accounts: %w", err)
+		}
 
-	locked, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lockedAccount])
-	if err != nil {
-		return fmt.Errorf("lock accounts: %w", err)
+		locked, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lockedAccount])
+		if err != nil {
+			return fmt.Errorf("lock accounts: %w", err)
 		}
 		if len(locked) != 2 {
 			return ErrNotFound
@@ -124,21 +140,45 @@ func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error 
 			}
 		}
 		if fromBalance < amount {
-		return ErrInsufficientFunds
-	}
+			return ErrInsufficientFunds
+		}
 
-	_, err = tx.Exec(ctx, `		UPDATE accounts SET balance = balance - $1 		WHERE id = $2`, amount, 		fromID	)
+		_, err = tx.Exec(ctx, `UPDATE accounts SET balance = balance - $1 WHERE id = $2`, amount, fromID)
+		if err != nil {
+			return fmt.Errorf("debit %d: %w", fromID, err)
+		}
+
+		_, err = tx.Exec(ctx, `UPDATE accounts SET balance = balance + $1 WHERE id = $2`, amount, toID)
+		if err != nil {
+			return fmt.Errorf("credit %d: %w", fromID, err)
+		}
+
+		err = tx.QueryRow(ctx, `
+			INSERT into transfers (from_account_id, to_account_id, amount)
+			VALUES ($1, $2, $3)
+			RETURNING id, from_account_id, to_account_id, amount, created_at`,
+			fromID, toID, amount,
+		).Scan(&t.ID, &t.FromAccountID, &t.ToAccountID, &t.Amount, &t.CreatedAt)
+		if err != nil {
+			return fmt.Errorf("insert transfer: %w", err)
+		}
+
+		_, err = tx.Exec(ctx, `
+			INSERT INTO entries (account_id, transfer_id, amount)
+			VALUES ($1, $3, $4), ($2, $3, $5)`,
+			fromID, toID, t.ID, -amount, amount)
+		if err != nil {
+			return fmt.Errorf("insert entries: %w", err)
+		}
+
+		return nil
+	})
+
 	if err != nil {
-		return fmt.Errorf("debit %d: %w", fromID, err)
+		return Transfer{}, err
 	}
 
-	_, err = tx.Exec(ctx, `		UPDATE accounts SET balance = balance + $1 		WHERE id = $2`, amount, toID	)
-	if err != nil {
-		return fmt.Errorf("credit %d: %w", fromID, err)
-	}
-
-	return nil
-})
+	return t, err
 }
 
 // TotalBalance returns the sum of every balance. If money is neither created
