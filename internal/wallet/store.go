@@ -13,6 +13,9 @@ import (
 var (
 	ErrInvalidAmount = errors.New("wallet: amount must be positive")
 	ErrNotFound      = errors.New("wallet: account not found")
+
+	ErrInsufficientFunds = errors.New("wallet: insufficient funds")
+	ErrSameAccount       = errors.New("wallet: cannot transfer to same account")
 )
 
 type Account struct {
@@ -69,4 +72,50 @@ func (s *Store) GetAccount(ctx context.Context, id int64) (Account, error) {
 	}
 
 	return a, nil
+}
+
+func (s *Store) Transfer(ctx context.Context, fromID, toID, amount int64) error {
+	if amount < 0 {
+		return ErrInvalidAmount
+	}
+
+	if fromID == toID {
+		return ErrSameAccount
+	}
+
+	from, err := s.GetAccount(ctx, fromID)
+	if err != nil {
+		return err
+	}
+
+	to, err := s.GetAccount(ctx, toID)
+	if err != nil {
+		return err
+	}
+
+	if from.Balance < amount {
+		return ErrInsufficientFunds
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE accounts SET balance = $1
+		WHERE id = $2`,
+		from.Balance-amount,
+		from.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("debit %d: %w", from.ID, err)
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE accounts SET balance = $1
+		WHERE id = $2`,
+		to.Balance+amount,
+		to.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("credit %d: %w", to.ID, err)
+	}
+
+	return nil
 }

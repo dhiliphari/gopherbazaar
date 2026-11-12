@@ -56,3 +56,29 @@ func (app *application) getAccount(w http.ResponseWriter, r *http.Request) {
 		app.writeJSON(w, http.StatusOK, envelope{"account": acct})
 	}
 }
+
+func (app *application) createTransfer(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		FromAccountID int64 `json:"from_account_id"`
+		ToAccountID   int64 `json:"to_account_id"`
+		Amount        int64 `json:"amount"`
+	}
+	if err := app.readJSON(w, r, &input); err != nil {
+		app.errorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err := app.wallet.Transfer(r.Context(), input.FromAccountID, input.ToAccountID, input.Amount)
+	switch {
+	case errors.Is(err, wallet.ErrNotFound):
+		app.errorResponse(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, wallet.ErrInvalidAmount),
+		errors.Is(err, wallet.ErrSameAccount),
+		errors.Is(err, wallet.ErrInsufficientFunds):
+		app.errorResponse(w, http.StatusUnprocessableEntity, err.Error())
+	case err != nil:
+		app.serverError(w, r, err)
+	default:
+		app.writeJSON(w, http.StatusCreated, envelope{"status": "completed"})
+	}
+}
