@@ -4,24 +4,20 @@ import (
 	"context"
 	"flag"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
 	"github.com/gopherbazaar/ledger/internal/accounts"
 	"github.com/gopherbazaar/ledger/internal/dbx"
-	"github.com/gopherbazaar/ledger/internal/httpx"
+	"github.com/gopherbazaar/ledger/internal/grpcx"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
-type application struct {
-	logger *slog.Logger
-	store  *accounts.Store
-}
-
 func main() {
-	addr := flag.String("addr", ":4001", "HTTP listen address")
+	addr := flag.String("addr", ":9001", "gRPC listen address")
 	dsn := flag.String("db-dsn", os.Getenv("ACCOUNTS_DB_DSN"), "Postgres DSN")
 	maxConns := flag.Int("db-max-conns", 25, "maximum open DB connections")
 	flag.Parse()
@@ -38,17 +34,12 @@ func main() {
 	}
 	defer pool.Close()
 
-	app := &application{logger: logger, store: accounts.NewStore(pool)}
+	srv := grpc.NewServer()
+	accountsv1.RegisterAccountsServiceServer(srv, accounts.NewGRPCServer(accounts.NewStore(pool), logger))
+	// Reflection lets tools like grpcurl discover the API at runtime.
+	reflection.Register(srv)
 
-	srv := &http.Server{
-		Addr:         *addr,
-		Handler:      app.routes(),
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  time.Minute,
-	}
-
-	if err := httpx.Serve(ctx, logger, srv); err != nil {
+	if err := grpcx.Serve(ctx, logger, srv, *addr); err != nil {
 		logger.Error("server", "error", err)
 		os.Exit(1)
 	}
