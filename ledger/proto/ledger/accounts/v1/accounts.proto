@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package ledger.accounts.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1;accountsv1";
+
+// AccountsService owns balances and the ledger.
+service AccountsService {
+    rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse);
+    rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+
+    // Debit, Credit and Refund move money on behalf of a transfer
+    rpc Debit(DebitRequest) returns (DebitResponse);
+    rpc Credit(CreditRequest) returns (CreditResponse);
+    rpc Refund(RefundRequest) returns (RefundResponse);
+
+    rpc GetTotalBalance(GetTotalBalanceRequest) returns (GetTotalBalanceResponse);
+    rpc Reconcile(ReconcileRequest) returns (ReconcileResponse);
+}
+
+message Account {
+    int64 id = 1;
+    string owner = 2;
+    // Balance in minor units (cents).
+    int64 balance = 3;
+    string currency = 4;
+    google.protobuf.Timestamp create_time = 5;
+}
+
+message CreateAccountRequest {
+  string owner = 1;
+  int64 opening_deposit = 2;
+}
+
+message CreateAccountResponse {
+  Account account = 1;
+}
+
+message GetAccountRequest {
+  int64 id = 1;
+}
+
+message GetAccountResponse {
+  Account account = 1;
+}
+
+message DebitRequest {
+  int64 account_id = 1;
+  int64 transfer_id = 2;
+  int64 amount = 3;
+}
+
+message DebitResponse {}
+
+message CreditRequest {
+  int64 account_id = 1;
+  int64 transfer_id = 2;
+  int64 amount = 3;
+}
+
+message CreditResponse {}
+
+message RefundRequest {
+  int64 account_id = 1;
+  int64 transfer_id = 2;
+  int64 amount = 3;
+}
+
+message RefundResponse {}
+
+message GetTotalBalanceRequest {}
+
+message GetTotalBalanceResponse {
+  int64 total = 1;
+}
+
+message ReconcileRequest {}
+
+message ReconcileResponse {
+  repeated Mismatch mismatches = 1;
+}
+
+// Mismatch is an account whose cached balance disagrees with its ledger entries.
+message Mismatch {
+  int64 account_id = 1;
+  int64 balance = 2;
+  int64 ledger_balance = 3;
+}

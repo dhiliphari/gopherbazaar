@@ -1,6 +1,6 @@
 -include .env
 
-.PHONY: db/up db/migrate db/reset build run/accounts run/transfers load test test/short
+.PHONY: db/up db/migrate db/reset build run/accounts run/transfers load test test/short proto proto/lint proto/breaking
 
 db/up:
 	docker compose up -d --wait
@@ -31,3 +31,14 @@ test:
 
 test/short:
 	go test -short -race -count=1 ./...
+
+proto:
+	buf lint
+	buf generate
+
+proto/lint:
+	buf lint
+
+# Compare the protos against the last commit on main.
+proto/breaking:
+	buf breaking --against '.git#branch=main'
