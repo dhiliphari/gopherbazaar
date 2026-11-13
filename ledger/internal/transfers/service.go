@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 )
 
 var (
@@ -12,6 +13,10 @@ var (
 	ErrSameAccount       = errors.New("transfers: cannot transfer to the same account")
 	ErrAccountNotFound   = errors.New("transfers: account not found")
 	ErrInsufficientFunds = errors.New("transfers: insufficient funds")
+
+	// ErrOutcomeUnknown means a call to accounts failed in a way that doesn't
+	// tell us whether it took effect (a timeout, a reset connection, a 5xx).
+	ErrOutcomeUnknown = errors.New("transfers: outcome unknown")
 )
 
 // AccountInfo is the part of an account the transfers service cares about.
@@ -50,17 +55,81 @@ func (s *Service) Transfer(ctx context.Context, fromID, toID, amount int64) (Tra
 		return Transfer{}, ErrSameAccount
 	}
 
+	if _, err := s.accounts.GetAccount(ctx, toID); err != nil {
+		if errors.Is(err, ErrAccountNotFound) {
+			return Transfer{}, err
+		}
+		return Transfer{}, fmt.Errorf("check destination: %w", err)
+	}
+
 	t, err := s.store.Create(ctx, fromID, toID, amount)
 	if err != nil {
 		return Transfer{}, err
 	}
 
-	if err := s.accounts.Debit(ctx, fromID, t.ID, amount); err != nil {
-		return Transfer{}, fmt.Errorf("debit: %w", err)
-	}
-	if err := s.accounts.Credit(ctx, toID, t.ID, amount); err != nil {
-		return Transfer{}, fmt.Errorf("credit: %w", err)
+	return s.execute(ctx, t)
+}
+
+// execute drives a transfer forward from whatever state it is in, recording
+// the outcome of every step before taking the next one.
+func (s *Service) execute(ctx context.Context, t Transfer) (Transfer, error) {
+	if t.Status == StatusPending {
+		err := s.accounts.Debit(ctx, t.FromAccountID, t.ID, t.Amount)
+		switch {
+		case isDefinite(err):
+			// Accounts said no. No money moved.
+			return s.finish(ctx, t, StatusFailed, err)
+		case err != nil:
+			return s.unknown(ctx, t, "debit", err)
+		}
+		if t, err = s.store.SetStatus(ctx, t.ID, StatusDebited, ""); err != nil {
+			return t, err
+		}
 	}
 
-	return s.store.SetStatus(ctx, t.ID, StatusCompleted, "")
+	if t.Status == StatusDebited {
+		err := s.accounts.Credit(ctx, t.ToAccountID, t.ID, t.Amount)
+		switch {
+		case isDefinite(err):
+			if rerr := s.accounts.Refund(ctx, t.FromAccountID, t.ID, t.Amount); rerr != nil {
+				return s.unknown(ctx, t, "refund", rerr)
+			}
+			return s.finish(ctx, t, StatusRefunded, err)
+		case err != nil:
+			return s.unknown(ctx, t, "credit", err)
+		}
+		return s.store.SetStatus(ctx, t.ID, StatusCompleted, "")
+	}
+
+	return t, nil
+}
+
+// isDefinite reports whether err is an answer from accounts, as opposed to a
+// failure to get an answer.
+func isDefinite(err error) bool {
+	return errors.Is(err, ErrAccountNotFound) || errors.Is(err, ErrInsufficientFunds)
+}
+
+// finish moves the transfer to a final status and returns cause to the caller.
+func (s *Service) finish(ctx context.Context, t Transfer, status Status, cause error) (Transfer, error) {
+	t, err := s.store.SetStatus(ctx, t.ID, status, cause.Error())
+	if err != nil {
+		return t, err
+	}
+	return t, cause
+}
+
+// unknown records an ambiguous failure without changing the status.
+func (s *Service) unknown(ctx context.Context, t Transfer, step string, cause error) (Transfer, error) {
+	s.logger.Warn("transfer outcome unknown",
+		"transfer_id", t.ID, "status", t.Status, "step", step, "error", cause)
+
+	// The caller's context may be the thing that failed (it was cancelled,
+	// say), so record the error using a short context of our own.
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+	if updated, err := s.store.SetStatus(recCtx, t.ID, t.Status, step+": "+cause.Error()); err == nil {
+		t = updated
+	}
+	return t, fmt.Errorf("%w: %s for transfer %d: %w", ErrOutcomeUnknown, step, t.ID, cause)
 }

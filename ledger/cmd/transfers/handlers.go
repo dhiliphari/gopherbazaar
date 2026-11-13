@@ -21,6 +21,11 @@ func (app *application) createTransfer(w http.ResponseWriter, r *http.Request) {
 
 	t, err := app.service.Transfer(r.Context(), input.FromAccountID, input.ToAccountID, input.Amount)
 	switch {
+	case errors.Is(err, transfers.ErrOutcomeUnknown):
+		httpx.WriteJSON(w, http.StatusAccepted, httpx.Envelope{
+			"transfer": t,
+			"message":  "transfer accepted but its outcome is not yet known; poll GET /v1/transfers/{id}",
+		})
 	case errors.Is(err, transfers.ErrAccountNotFound):
 		httpx.Error(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, transfers.ErrInvalidAmount),
