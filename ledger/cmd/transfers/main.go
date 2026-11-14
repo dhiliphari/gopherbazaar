@@ -38,7 +38,10 @@ func main() {
 	}
 	defer pool.Close()
 
-	conn, err := grpc.NewClient(*accountsURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(*accountsURL,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainUnaryInterceptor(grpcx.PropagateRequestID()),
+	)
 	if err != nil {
 		logger.Error("accounts client", "error", err)
 		os.Exit(1)
@@ -49,7 +52,7 @@ func main() {
 	accountsClient := accountsclient.New(accountsv1.NewAccountsServiceClient(conn))
 	service := transfers.NewService(store, accountsClient, logger)
 
-	srv := grpc.NewServer()
+	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(grpcx.RequestID()))
 	transfersv1.RegisterTransfersServiceServer(srv, transfers.NewGRPCServer(service, store, logger))
 	reflection.Register(srv)
 

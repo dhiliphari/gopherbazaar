@@ -12,6 +12,7 @@ import (
 
 	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
 	transfersv1 "github.com/gopherbazaar/ledger/gen/ledger/transfers/v1"
+	"github.com/gopherbazaar/ledger/internal/grpcx"
 	"github.com/gopherbazaar/ledger/internal/httpx"
 	"github.com/gopherbazaar/ledger/internal/logx"
 	"google.golang.org/grpc"
@@ -35,14 +36,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	accountsConn, err := grpc.NewClient(*accountsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	accountsConn, err := dial(*accountsAddr)
 	if err != nil {
 		logger.Error("accounts client", "error", err)
 		os.Exit(1)
 	}
 	defer accountsConn.Close()
 
-	transferConn, err := grpc.NewClient(*transfersAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	transferConn, err := dial(*transfersAddr)
 	if err != nil {
 		logger.Error("transfers client", "error", err)
 		os.Exit(1)
@@ -68,4 +69,11 @@ func main() {
 		logger.Error("server", "error", err)
 		os.Exit(1)
 	}
+}
+
+func dial(addr string) (*grpc.ClientConn, error) {
+	return grpc.NewClient(addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithChainUnaryInterceptor(grpcx.PropagateRequestID()),
+	)
 }
