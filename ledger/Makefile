@@ -1,6 +1,6 @@
 -include .env
 
-.PHONY: db/up db/migrate db/reset build run/accounts run/transfers load test test/short proto proto/lint proto/breaking
+.PHONY: db/up db/migrate db/reset build run/accounts run/transfers run/gateway load test test/short proto proto/lint proto/breaking
 
 db/up:
 	docker compose up -d --wait
@@ -22,6 +22,9 @@ run/accounts:
 
 run/transfers:
 	go run ./cmd/transfers -db-dsn $(TRANSFERS_DB_DSN)
+
+run/gateway:
+	go run ./cmd/gateway
 
 load:
 	go run ./cmd/loadgen $(ARGS)

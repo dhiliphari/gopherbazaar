@@ -23,8 +23,8 @@ type config struct {
 
 func main() {
 	var cfg config
-	flag.StringVar(&cfg.accountsURL, "accounts-url", "http://localhost:4001", "accounts service base URL")
-	flag.StringVar(&cfg.transfersURL, "transfers-url", "http://localhost:4002", "transfers service base URL")
+	flag.StringVar(&cfg.accountsURL, "accounts-url", "http://localhost:4000", "accounts service base URL")
+	flag.StringVar(&cfg.transfersURL, "transfers-url", "http://localhost:4000", "transfers service base URL")
 	flag.IntVar(&cfg.accounts, "accounts", 10, "number of accounts to open")
 	flag.Int64Var(&cfg.deposit, "deposit", 10_000, "opening deposit per account (cents)")
 	flag.IntVar(&cfg.workers, "workers", 50, "concurrent workers")
