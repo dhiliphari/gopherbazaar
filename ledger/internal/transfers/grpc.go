@@ -28,7 +28,7 @@ func NewGRPCServer(service *Service, store *Store, logger *slog.Logger) *GRPCSer
 func (s *GRPCServer) CreateTransfer(ctx context.Context, req *transfersv1.CreateTransferRequest) (*transfersv1.CreateTransferResponse, error) {
 	t, err := s.service.Transfer(ctx, req.GetFromAccountId(), req.GetToAccountId(), req.GetAmount())
 	if err != nil && !errors.Is(err, ErrOutcomeUnknown) {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &transfersv1.CreateTransferResponse{Transfer: toProto(t)}, nil
 }
@@ -36,7 +36,7 @@ func (s *GRPCServer) CreateTransfer(ctx context.Context, req *transfersv1.Create
 func (s *GRPCServer) GetTransfer(ctx context.Context, req *transfersv1.GetTransferRequest) (*transfersv1.GetTransferResponse, error) {
 	t, err := s.store.Get(ctx, req.GetId())
 	if err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &transfersv1.GetTransferResponse{Transfer: toProto(t)}, nil
 }
@@ -44,7 +44,7 @@ func (s *GRPCServer) GetTransfer(ctx context.Context, req *transfersv1.GetTransf
 func (s *GRPCServer) GetTransferStats(ctx context.Context, req *transfersv1.GetTransferStatsRequest) (*transfersv1.GetTransferStatsResponse, error) {
 	st, err := s.store.Stats(ctx)
 	if err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	res := &transfersv1.GetTransferStatsResponse{
 		ByStatus: make(map[string]int64, len(st.ByStatus)),
@@ -56,7 +56,7 @@ func (s *GRPCServer) GetTransferStats(ctx context.Context, req *transfersv1.GetT
 	return res, nil
 }
 
-func (s *GRPCServer) toStatus(err error) error {
+func (s *GRPCServer) toStatus(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, ErrInvalidAmount):
 		return grpcx.Error(codes.InvalidArgument, err.Error(), errorDomain, "INVALID_AMOUNT")
@@ -73,7 +73,7 @@ func (s *GRPCServer) toStatus(err error) error {
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
 	}
-	s.logger.Error("internal error", "error", err)
+	s.logger.ErrorContext(ctx, "internal error", "error", err)
 	return status.Error(codes.Internal, "internal error")
 }
 

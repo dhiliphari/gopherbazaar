@@ -3,6 +3,7 @@ package grpcx
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/gopherbazaar/ledger/internal/reqid"
@@ -78,9 +79,37 @@ func isServerFault(code codes.Code) bool {
 	return false
 }
 
+// Recovery turns a panic in a handler into an Internal error, instead of
+// letting it crash the whole process (and every other in-flight RPC).
+func Recovery(logger *slog.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
+		defer func() {
+			if p := recover(); p != nil {
+				logger.ErrorContext(ctx, "panic recovered",
+					"method", info.FullMethod,
+					"panic", p,
+					"stack", string(debug.Stack()),
+				)
+				resp, err = nil, status.Error(codes.Internal, "internal error")
+			}
+		}()
+
+		return handler(ctx, req)
+	}
+}
+
+// ServerInterceptors returns the interceptor chain every server uses. The
+// first interceptor is the outermost: it runs first on the way in and last
+// on the way out.
+//
+//	RequestID → Logging → Recovery → handler
+//
+// Recovery sits inside Logging so that a recovered panic is logged as an
+// Internal error like any other, with the request ID attached.
 func ServerInterceptors(logger *slog.Logger) grpc.ServerOption {
 	return grpc.ChainUnaryInterceptor(
 		RequestID(),
 		Logging(logger),
+		Recovery(logger),
 	)
 }

@@ -32,7 +32,7 @@ func (s *GRPCServer) CreateAccount(ctx context.Context, req *accountsv1.CreateAc
 	}
 	a, err := s.store.CreateAccount(ctx, req.GetOwner(), req.GetOpeningDeposit())
 	if err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &accountsv1.CreateAccountResponse{Account: toProto(a)}, nil
 }
@@ -40,28 +40,28 @@ func (s *GRPCServer) CreateAccount(ctx context.Context, req *accountsv1.CreateAc
 func (s *GRPCServer) GetAccount(ctx context.Context, req *accountsv1.GetAccountRequest) (*accountsv1.GetAccountResponse, error) {
 	a, err := s.store.GetAccount(ctx, req.GetId())
 	if err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &accountsv1.GetAccountResponse{Account: toProto(a)}, nil
 }
 
 func (s *GRPCServer) Debit(ctx context.Context, req *accountsv1.DebitRequest) (*accountsv1.DebitResponse, error) {
 	if err := s.store.Debit(ctx, req.GetAccountId(), req.GetTransferId(), req.GetAmount()); err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &accountsv1.DebitResponse{}, nil
 }
 
 func (s *GRPCServer) Credit(ctx context.Context, req *accountsv1.CreditRequest) (*accountsv1.CreditResponse, error) {
 	if err := s.store.Credit(ctx, req.GetAccountId(), req.GetTransferId(), req.GetAmount()); err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &accountsv1.CreditResponse{}, nil
 }
 
 func (s *GRPCServer) Refund(ctx context.Context, req *accountsv1.RefundRequest) (*accountsv1.RefundResponse, error) {
 	if err := s.store.Refund(ctx, req.GetAccountId(), req.GetTransferId(), req.GetAmount()); err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &accountsv1.RefundResponse{}, nil
 }
@@ -69,7 +69,7 @@ func (s *GRPCServer) Refund(ctx context.Context, req *accountsv1.RefundRequest) 
 func (s *GRPCServer) GetTotalBalance(ctx context.Context, _ *accountsv1.GetTotalBalanceRequest) (*accountsv1.GetTotalBalanceResponse, error) {
 	total, err := s.store.TotalBalance(ctx)
 	if err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	return &accountsv1.GetTotalBalanceResponse{Total: total}, nil
 }
@@ -77,7 +77,7 @@ func (s *GRPCServer) GetTotalBalance(ctx context.Context, _ *accountsv1.GetTotal
 func (s *GRPCServer) Reconcile(ctx context.Context, _ *accountsv1.ReconcileRequest) (*accountsv1.ReconcileResponse, error) {
 	mismatches, err := s.store.Reconcile(ctx)
 	if err != nil {
-		return nil, s.toStatus(err)
+		return nil, s.toStatus(ctx, err)
 	}
 	resp := &accountsv1.ReconcileResponse{}
 	for _, m := range mismatches {
@@ -90,7 +90,7 @@ func (s *GRPCServer) Reconcile(ctx context.Context, _ *accountsv1.ReconcileReque
 	return resp, nil
 }
 
-func (s *GRPCServer) toStatus(err error) error {
+func (s *GRPCServer) toStatus(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return grpcx.Error(codes.NotFound, err.Error(), errorDomain, "ACCOUNT_NOT_FOUND")
@@ -103,7 +103,7 @@ func (s *GRPCServer) toStatus(err error) error {
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
 	}
-	s.logger.Error("internal error", "error", err)
+	s.logger.ErrorContext(ctx, "internal error", "error", err)
 	return status.Error(codes.Internal, "internal error")
 }
 

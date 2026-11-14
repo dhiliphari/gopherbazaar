@@ -121,7 +121,7 @@ func (s *Service) finish(ctx context.Context, t Transfer, status Status, cause e
 
 // unknown records an ambiguous failure without changing the status.
 func (s *Service) unknown(ctx context.Context, t Transfer, step string, cause error) (Transfer, error) {
-	s.logger.Warn("transfer outcome unknown",
+	s.logger.WarnContext(ctx, "transfer outcome unknown",
 		"transfer_id", t.ID, "status", t.Status, "step", step, "error", cause)
 
 	// The caller's context may be the thing that failed (it was cancelled,
