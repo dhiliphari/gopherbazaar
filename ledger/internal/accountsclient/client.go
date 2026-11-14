@@ -2,93 +2,76 @@
 package accountsclient
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 
+	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
+	"github.com/gopherbazaar/ledger/internal/grpcx"
 	"github.com/gopherbazaar/ledger/internal/transfers"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// Client implements transfers.AccountsClient over HTTP.
+// Client implements transfers.AccountsClient over gRPC.
 type Client struct {
-	base string
-	http *http.Client
+	rpc accountsv1.AccountsServiceClient
 }
 
 // This line fails to compile if Client stops satisfying the interface.
 var _ transfers.AccountsClient = (*Client)(nil)
 
-func New(baseURL string) *Client {
-	return &Client{base: baseURL, http: &http.Client{}}
+func New(rpc accountsv1.AccountsServiceClient) *Client {
+	return &Client{rpc: rpc}
 }
 
 func (c *Client) GetAccount(ctx context.Context, id int64) (transfers.AccountInfo, error) {
-	var out struct {
-		Account struct {
-			ID      int64  `json:"id"`
-			Owner   string `json:"owner"`
-			Balance int64  `json:"balance"`
-		} `json:"account"`
+	res, err := c.rpc.GetAccount(ctx, &accountsv1.GetAccountRequest{Id: id})
+	if err != nil {
+		return transfers.AccountInfo{}, mapErr(err)
 	}
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/v1/accounts/%d", id), nil, &out); err != nil {
-		return transfers.AccountInfo{}, err
-	}
-	return transfers.AccountInfo{
-		ID:      out.Account.ID,
-		Owner:   out.Account.Owner,
-		Balance: out.Account.Balance,
-	}, nil
+	a := res.GetAccount()
+	return transfers.AccountInfo{ID: a.GetId(), Owner: a.GetOwner(), Balance: a.GetBalance()}, nil
 }
 
 func (c *Client) Debit(ctx context.Context, accountID, transferID, amount int64) error {
-	return c.movement(ctx, "debit", accountID, transferID, amount)
+	_, err := c.rpc.Debit(ctx, &accountsv1.DebitRequest{
+		AccountId:  accountID,
+		TransferId: transferID,
+		Amount:     amount,
+	})
+	return mapErr(err)
 }
 
 func (c *Client) Credit(ctx context.Context, accountID, transferID, amount int64) error {
-	return c.movement(ctx, "credit", accountID, transferID, amount)
+	_, err := c.rpc.Credit(ctx, &accountsv1.CreditRequest{
+		AccountId:  accountID,
+		TransferId: transferID,
+		Amount:     amount,
+	})
+	return mapErr(err)
 }
 
 func (c *Client) Refund(ctx context.Context, accountID, transferID, amount int64) error {
-	return c.movement(ctx, "refund", accountID, transferID, amount)
+	_, err := c.rpc.Refund(ctx, &accountsv1.RefundRequest{
+		AccountId:  accountID,
+		TransferId: transferID,
+		Amount:     amount,
+	})
+	return mapErr(err)
 }
 
-func (c *Client) movement(ctx context.Context, op string, accountID, transferID, amount int64) error {
-	in := map[string]int64{"transfer_id": transferID, "amount": amount}
-	path := fmt.Sprintf("/internal/v1/accounts/%d/%s", accountID, op)
-	return c.do(ctx, http.MethodPost, path, in, nil)
-}
-
-// do sends a JSON request and translates the response status into the
-// errors the transfers package understands.
-func (c *Client) do(ctx context.Context, method, path string, in, out any) error {
-	var body bytes.Buffer
-	if in != nil {
-		if err := json.NewEncoder(&body).Encode(in); err != nil {
-			return err
-		}
+// mapErr translates gRPC status errors into the errors the transfers package
+// understands. Anything it doesn't recognise is returned unchanged, which the
+// transfers service treats as "outcome unknown".
+func mapErr(err error) error {
+	if err == nil {
+		return nil
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, &body)
-	if err != nil {
-		return err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("accounts %s %s: %w", method, path, err)
-	}
-	defer resp.Body.Close()
-
+	code := status.Code(err)
 	switch {
-	case resp.StatusCode == http.StatusNotFound:
+	case code == codes.NotFound:
 		return transfers.ErrAccountNotFound
-	case resp.StatusCode == http.StatusUnprocessableEntity:
+	case code == codes.FailedPrecondition && grpcx.Reason(err) == "INSUFFICIENT_FUNDS":
 		return transfers.ErrInsufficientFunds
-	case resp.StatusCode >= 300:
-		return fmt.Errorf("accounts %s %s: unexpected status %d", method, path, resp.StatusCode)
 	}
-	if out != nil {
-		return json.NewDecoder(resp.Body).Decode(out)
-	}
-	return nil
+	return err
 }
