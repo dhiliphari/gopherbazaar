@@ -13,6 +13,7 @@ import (
 	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
 	transfersv1 "github.com/gopherbazaar/ledger/gen/ledger/transfers/v1"
 	"github.com/gopherbazaar/ledger/internal/httpx"
+	"github.com/gopherbazaar/ledger/internal/logx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -29,7 +30,7 @@ func main() {
 	transfersAddr := flag.String("transfers-addr", "localhost:9002", "transfers service base URL")
 	flag.Parse()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "gateway")
+	logger := logx.New(os.Stdout, "gateway")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

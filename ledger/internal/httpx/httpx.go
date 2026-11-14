@@ -48,7 +48,7 @@ func Error(w http.ResponseWriter, status int, message string) {
 }
 
 func ServerError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
-	logger.Error("server error", "method", r.Method, "path", r.URL.Path, "error", err)
+	logger.ErrorContext(r.Context(), "server error", "method", r.Method, "path", r.URL.Path, "error", err)
 	Error(w, http.StatusInternalServerError, "the server encountered a problem")
 }
 
@@ -70,22 +70,6 @@ type statusRecorder struct {
 func (rec *statusRecorder) WriteHeader(code int) {
 	rec.status = code
 	rec.ResponseWriter.WriteHeader(code)
-}
-
-func LogRequests(logger *slog.Logger, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-
-		next.ServeHTTP(rec, r)
-
-		logger.Info("request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rec.status,
-			"duration_ms", time.Since(start).Milliseconds(),
-		)
-	})
 }
 
 // Serve runs srv until ctx is cancelled, then shuts it down gracefully.

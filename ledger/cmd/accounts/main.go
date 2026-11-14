@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +11,7 @@ import (
 	"github.com/gopherbazaar/ledger/internal/accounts"
 	"github.com/gopherbazaar/ledger/internal/dbx"
 	"github.com/gopherbazaar/ledger/internal/grpcx"
+	"github.com/gopherbazaar/ledger/internal/logx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -22,7 +22,7 @@ func main() {
 	maxConns := flag.Int("db-max-conns", 25, "maximum open DB connections")
 	flag.Parse()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "accounts")
+	logger := logx.New(os.Stdout, "accounts")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

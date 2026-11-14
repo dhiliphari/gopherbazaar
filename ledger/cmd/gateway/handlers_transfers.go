@@ -30,7 +30,6 @@ func (app *application) createTransfer(w http.ResponseWriter, r *http.Request) {
 
 	t := resp.GetTransfer()
 	if t.GetStatus() != transfersv1.TransferStatus_TRANSFER_STATUS_COMPLETED {
-		// The outcome isn't known yet (see chapter 1.3).
 		httpx.WriteJSON(w, http.StatusAccepted, httpx.Envelope{
 			"transfer": transferFromProto(t),
 			"message":  "transfer accepted but its outcome is not yet known; poll GET /v1/transfers/{id}",

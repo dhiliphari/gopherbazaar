@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +12,7 @@ import (
 	"github.com/gopherbazaar/ledger/internal/accountsclient"
 	"github.com/gopherbazaar/ledger/internal/dbx"
 	"github.com/gopherbazaar/ledger/internal/grpcx"
+	"github.com/gopherbazaar/ledger/internal/logx"
 	"github.com/gopherbazaar/ledger/internal/transfers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -26,7 +26,7 @@ func main() {
 	accountsURL := flag.String("accounts-url", "localhost:9001", "accounts service base URL")
 	flag.Parse()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "transfers")
+	logger := logx.New(os.Stdout, "transfers")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

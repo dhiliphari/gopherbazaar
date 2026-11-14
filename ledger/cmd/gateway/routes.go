@@ -1,6 +1,10 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/gopherbazaar/ledger/internal/httpx"
+)
 
 func (app *application) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -16,5 +20,5 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /v1/transfers/{id}", app.getTransfer)
 	mux.HandleFunc("GET /v1/stats/transfers", app.transferStats)
 
-	return mux
+	return httpx.RequestID(httpx.LogRequests(app.logger, mux))
 }
