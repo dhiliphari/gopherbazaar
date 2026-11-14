@@ -34,7 +34,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(grpcx.RequestID()))
+	srv := grpc.NewServer(grpcx.ServerInterceptors(logger))
 	accountsv1.RegisterAccountsServiceServer(srv, accounts.NewGRPCServer(accounts.NewStore(pool), logger))
 	// Reflection lets tools like grpcurl discover the API at runtime.
 	reflection.Register(srv)

@@ -52,7 +52,7 @@ func main() {
 	accountsClient := accountsclient.New(accountsv1.NewAccountsServiceClient(conn))
 	service := transfers.NewService(store, accountsClient, logger)
 
-	srv := grpc.NewServer(grpc.ChainUnaryInterceptor(grpcx.RequestID()))
+	srv := grpc.NewServer(grpcx.ServerInterceptors(logger))
 	transfersv1.RegisterTransfersServiceServer(srv, transfers.NewGRPCServer(service, store, logger))
 	reflection.Register(srv)
 
