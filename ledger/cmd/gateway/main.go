@@ -12,6 +12,7 @@ import (
 
 	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
 	transfersv1 "github.com/gopherbazaar/ledger/gen/ledger/transfers/v1"
+	"github.com/gopherbazaar/ledger/internal/debugx"
 	"github.com/gopherbazaar/ledger/internal/grpcx"
 	"github.com/gopherbazaar/ledger/internal/httpx"
 	"github.com/gopherbazaar/ledger/internal/logx"
@@ -29,12 +30,19 @@ func main() {
 	addr := flag.String("addr", ":4000", "HTTP listen address")
 	accountsAddr := flag.String("accounts-addr", "localhost:9001", "accounts service base URL")
 	transfersAddr := flag.String("transfers-addr", "localhost:9002", "transfers service base URL")
+	debugAddr := flag.String("debug-addr", "localhost:6000", "debug (expvar, pprof) listen address")
 	flag.Parse()
 
 	logger := logx.New(os.Stdout, "gateway")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	go func() {
+		if err := httpx.Serve(ctx, logger, debugx.NewServer(*debugAddr)); err != nil {
+			logger.Error("debug server", "error", err)
+		}
+	}()
 
 	accountsConn, err := dial(*accountsAddr)
 	if err != nil {
