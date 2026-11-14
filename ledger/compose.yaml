@@ -16,6 +16,15 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+  
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    ports:
+      - "8474:8474"
+      - "19001:19001"
+    extra_hosts:
+      # Lets the container reach services running on the host machine.
+      - "host.docker.internal:host-gateway"
 
 volumes:
   pgdata:

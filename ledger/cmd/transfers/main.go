@@ -25,7 +25,7 @@ func main() {
 	addr := flag.String("addr", ":9002", "gRPC listen address")
 	dsn := flag.String("db-dsn", os.Getenv("TRANSFERS_DB_DSN"), "Postgres DSN")
 	maxConns := flag.Int("db-max-conns", 25, "maximum open DB connections")
-	accountsURL := flag.String("accounts-url", "localhost:9001", "accounts service base URL")
+	accountsURL := flag.String("accounts-addr", "localhost:9001", "accounts service base URL")
 	debugAddr := flag.String("debug-addr", "localhost:6002", "debug (expvar, pprof) listen address")
 	flag.Parse()
 
