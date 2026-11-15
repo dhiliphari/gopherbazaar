@@ -72,6 +72,8 @@ func (s *GRPCServer) toStatus(ctx context.Context, err error) error {
 		return status.Error(codes.Canceled, err.Error())
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
+	case status.Code(err) == codes.DeadlineExceeded, status.Code(err) == codes.Unavailable:
+		return grpcx.Error(codes.Unavailable, "accounts service unavailable", errorDomain, "DEPENDENCY_UNAVAILABLE")
 	}
 	s.logger.ErrorContext(ctx, "internal error", "error", err)
 	return status.Error(codes.Internal, "internal error")

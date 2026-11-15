@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
 	transfersv1 "github.com/gopherbazaar/ledger/gen/ledger/transfers/v1"
@@ -27,6 +28,7 @@ func main() {
 	maxConns := flag.Int("db-max-conns", 25, "maximum open DB connections")
 	accountsURL := flag.String("accounts-addr", "localhost:9001", "accounts service base URL")
 	debugAddr := flag.String("debug-addr", "localhost:6002", "debug (expvar, pprof) listen address")
+	accountsTimeout := flag.Duration("accounts-timeout", time.Second, "timeout for each call to accounts")
 	flag.Parse()
 
 	logger := logx.New(os.Stdout, "transfers")
@@ -49,7 +51,10 @@ func main() {
 
 	conn, err := grpc.NewClient(*accountsURL,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithChainUnaryInterceptor(grpcx.PropagateRequestID()),
+		grpc.WithChainUnaryInterceptor(
+			grpcx.PropagateRequestID(),
+			grpcx.CallTimeout(*accountsTimeout),
+		),
 	)
 	if err != nil {
 		logger.Error("accounts client", "error", err)
