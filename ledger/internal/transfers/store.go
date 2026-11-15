@@ -126,3 +126,32 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	}
 	return st, nil
 }
+
+// ClaimStuck finds up to limit unfinished transfers that haven't changed for
+// at least olderThan, leases them for lease, and returns them. A leased
+// transfer isn't returned again until its lease expires, and SKIP LOCKED
+// lets several resumers run at once without claiming the same rows.
+func (s *Store) ClaimStuck(ctx context.Context, olderThan, lease time.Duration, limit int) ([]Transfer, error) {
+	rows, err := s.pool.Query(ctx, `
+		UPDATE transfers
+		SET locked_until = now() + make_interval(secs => $2)
+		WHERE id IN (
+			SELECT id FROM transfers
+			WHERE status IN ('pending', 'debited')
+				AND updated_at < now() - make_interval(secs => $1)
+				AND (locked_until IS NULL OR locked_until < now())
+			ORDER BY updated_at
+			LIMIT $3
+			FOR UPDATE SKIP LOCKED 
+		)
+		RETURNING `+transferColumns,
+		olderThan.Seconds(), lease.Seconds(), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("claim stuck transfers: %w", err)
+	}
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Transfer, error) {
+		return scanTransfer(row)
+	})
+}

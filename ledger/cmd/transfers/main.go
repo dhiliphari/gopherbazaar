@@ -31,6 +31,8 @@ func main() {
 	debugAddr := flag.String("debug-addr", "localhost:6002", "debug (expvar, pprof) listen address")
 	accountsTimeout := flag.Duration("accounts-timeout", time.Second, "timeout for each call to accounts")
 	maxRPCTime := flag.Duration("max-rpc-time", 5*time.Second, "longest any RPC may run")
+	resumeEvery := flag.Duration("resume-every", 5*time.Second, "how often to look for stuck transfers")
+	resumeAfter := flag.Duration("resume-after", 10*time.Second, "how long a transfer must be unfinished before it is resumed")
 	flag.Parse()
 
 	logger := logx.New(os.Stdout, "transfers")
@@ -72,6 +74,9 @@ func main() {
 		Retryable:   accountsclient.IsTransient,
 	})
 	service := transfers.NewService(store, accountsClient, logger)
+
+	// Finish transfers left pending or debited by crashes and timeouts.
+	go service.RunResumer(ctx, *resumeEvery, *resumeAfter)
 
 	srv := grpc.NewServer(grpcx.ServerInterceptors(logger, *maxRPCTime))
 	transfersv1.RegisterTransfersServiceServer(srv, transfers.NewGRPCServer(service, store, logger))

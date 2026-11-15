@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/gopherbazaar/ledger/internal/reqid"
 )
 
 var (
@@ -132,4 +134,42 @@ func (s *Service) unknown(ctx context.Context, t Transfer, step string, cause er
 		t = updated
 	}
 	return t, fmt.Errorf("%w: %s for transfer %d: %w", ErrOutcomeUnknown, step, t.ID, cause)
+}
+
+// ResumeStuck claims up to limit transfers that have been unfinished for at
+// least olderThan and drives each one forward. It returns how many it
+// claimed. Because every accounts operation is idempotent, resuming a
+// transfer that another request is still working on is harmless.
+func (s *Service) ResumeStuck(ctx context.Context, olderThan, lease time.Duration, limit int) (int, error) {
+	stuck, err := s.store.ClaimStuck(ctx, olderThan, lease, limit)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, t := range stuck {
+		tctx := reqid.With(ctx, reqid.New())
+		resumed, err := s.execute(tctx, t)
+		s.logger.InfoContext(ctx, "transfer resumed",
+			"transfer_id", t.ID, "from_status", t.Status, "to_status", resumed.Status, "error", err)
+	}
+
+	return len(stuck), nil
+}
+
+// RunResumer calls ResumeStuck every interval until ctx is cancelled.
+func (s *Service) RunResumer(ctx context.Context, interval, olderThan time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			rctx, cancel := context.WithTimeout(ctx, interval)
+			if _, err := s.ResumeStuck(rctx, olderThan, 30*time.Second, 20); err != nil {
+				s.logger.ErrorContext(rctx, "resume stuck transfers", "error", err)
+			}
+			cancel()
+		}
+	}
 }
