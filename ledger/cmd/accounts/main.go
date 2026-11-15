@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	accountsv1 "github.com/gopherbazaar/ledger/gen/ledger/accounts/v1"
 	"github.com/gopherbazaar/ledger/internal/accounts"
@@ -23,6 +24,7 @@ func main() {
 	dsn := flag.String("db-dsn", os.Getenv("ACCOUNTS_DB_DSN"), "Postgres DSN")
 	maxConns := flag.Int("db-max-conns", 25, "maximum open DB connections")
 	debugAddr := flag.String("debug-addr", "localhost:6001", "debug (expvar, pprof) listen address")
+	maxRPCTime := flag.Duration("max-rpc-time", 5*time.Second, "longest any RPC may run")
 	flag.Parse()
 
 	logger := logx.New(os.Stdout, "accounts")
@@ -43,7 +45,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	srv := grpc.NewServer(grpcx.ServerInterceptors(logger))
+	srv := grpc.NewServer(grpcx.ServerInterceptors(logger, *maxRPCTime))
 	accountsv1.RegisterAccountsServiceServer(srv, accounts.NewGRPCServer(accounts.NewStore(pool), logger))
 	// Reflection lets tools like grpcurl discover the API at runtime.
 	reflection.Register(srv)

@@ -13,6 +13,24 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Deadline makes sure no RPC runs without a deadline, or with one longer
+// than limit. A caller that forgot to set a deadline gets limit; a caller
+// that asked for longer is capped at limit. If the caller's deadline has
+// already passed, the RPC is rejected without doing any work.
+func Deadline(limit time.Duration) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > limit {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, limit)
+			defer cancel()
+		}
+		return handler(ctx, req)
+	}
+}
+
 // RequestID takes the request ID from the incoming metadata (or makes a new
 // one if the caller didn't send any) and puts it in the context.
 func RequestID() grpc.UnaryServerInterceptor {
@@ -95,9 +113,10 @@ func Recovery(logger *slog.Logger) grpc.UnaryServerInterceptor {
 //
 // Recovery sits inside Logging so that a recovered panic is logged as an
 // Internal error like any other, with the request ID attached.
-func ServerInterceptors(logger *slog.Logger) grpc.ServerOption {
+func ServerInterceptors(logger *slog.Logger, maxDeadline time.Duration) grpc.ServerOption {
 	return grpc.ChainUnaryInterceptor(
 		RequestID(),
+		Deadline(maxDeadline),
 		Logging(logger),
 		Recovery(logger),
 	)

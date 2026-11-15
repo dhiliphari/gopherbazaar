@@ -29,6 +29,7 @@ func main() {
 	accountsURL := flag.String("accounts-addr", "localhost:9001", "accounts service base URL")
 	debugAddr := flag.String("debug-addr", "localhost:6002", "debug (expvar, pprof) listen address")
 	accountsTimeout := flag.Duration("accounts-timeout", time.Second, "timeout for each call to accounts")
+	maxRPCTime := flag.Duration("max-rpc-time", 5*time.Second, "longest any RPC may run")
 	flag.Parse()
 
 	logger := logx.New(os.Stdout, "transfers")
@@ -66,7 +67,7 @@ func main() {
 	accountsClient := accountsclient.New(accountsv1.NewAccountsServiceClient(conn))
 	service := transfers.NewService(store, accountsClient, logger)
 
-	srv := grpc.NewServer(grpcx.ServerInterceptors(logger))
+	srv := grpc.NewServer(grpcx.ServerInterceptors(logger, *maxRPCTime))
 	transfersv1.RegisterTransfersServiceServer(srv, transfers.NewGRPCServer(service, store, logger))
 	reflection.Register(srv)
 
