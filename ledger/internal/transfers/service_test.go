@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/gopherbazaar/ledger/internal/pgtest"
 	"github.com/gopherbazaar/ledger/internal/transfers"
@@ -16,6 +17,7 @@ import (
 // returns a scripted error and records that it was called.
 type fakeAccounts struct {
 	debitErr, creditErr, refundErr error
+	debitHangs                     bool // Debit blocks until its context is done
 	calls                          []string
 }
 
@@ -24,8 +26,12 @@ func (f *fakeAccounts) GetAccount(_ context.Context, id int64) (transfers.Accoun
 	return transfers.AccountInfo{ID: id}, nil
 }
 
-func (f *fakeAccounts) Debit(context.Context, int64, int64, int64) error {
+func (f *fakeAccounts) Debit(ctx context.Context, _, _, _ int64) error {
 	f.calls = append(f.calls, "debit")
+	if f.debitHangs {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return f.debitErr
 }
 
@@ -120,5 +126,39 @@ func TestTransferStateMachine(t *testing.T) {
 				t.Errorf("calls = %v, want %v", fake.calls, tt.wantCalls)
 			}
 		})
+	}
+}
+
+// TestTransferRespectsDeadline checks two things when accounts never answers:
+// the call returns soon after the caller's deadline, and the transfer's state
+// is still recorded even though the caller's context has already expired.
+func TestTransferRespectsDeadline(t *testing.T) {
+	store := transfers.NewStore(pgtest.New(t, "../../migrations/transfers"))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := transfers.NewService(store, &fakeAccounts{debitHangs: true}, logger)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	got, err := svc.Transfer(ctx, 1, 2, 100)
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, transfers.ErrOutcomeUnknown) {
+		t.Fatalf("error = %v, want ErrOutcomeUnknown", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+	if elapsed > time.Second {
+		t.Errorf("Transfer took %v; it should give up soon after the 200ms deadline", elapsed)
+	}
+
+	stored, err := store.Get(context.Background(), got.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != transfers.StatusPending || stored.LastError == "" {
+		t.Errorf("stored = %+v, want pending with last_error recorded", stored)
 	}
 }
