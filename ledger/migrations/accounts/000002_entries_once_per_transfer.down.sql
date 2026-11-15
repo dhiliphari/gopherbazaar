@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS entries_once_per_transfer_idx;

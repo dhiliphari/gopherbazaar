@@ -102,6 +102,8 @@ func (s *GRPCServer) toStatus(ctx context.Context, err error) error {
 		return status.Error(codes.Canceled, err.Error())
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
+	case errors.Is(err, ErrIdempotencyConflict):
+		return grpcx.Error(codes.AlreadyExists, err.Error(), errorDomain, "IDEMPOTENCY_CONFLICT")
 	}
 	s.logger.ErrorContext(ctx, "internal error", "error", err)
 	return status.Error(codes.Internal, "internal error")

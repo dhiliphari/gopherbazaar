@@ -14,6 +14,10 @@ var (
 	ErrInvalidAmount     = errors.New("accounts: amount must be positive")
 	ErrNotFound          = errors.New("accounts: account not found")
 	ErrInsufficientFunds = errors.New("accounts: insufficient funds")
+
+	// ErrIdempotencyConflict means a movement for this transfer was already
+	// applied with a different amount: a bug in the caller, not a retry.
+	ErrIdempotencyConflict = errors.New("accounts: movement already applied with a different amount")
 )
 
 // EntryKind says why a ledger entry exists.
@@ -135,6 +139,26 @@ func (s *Store) apply(ctx context.Context, accountId, transferID, delta int64, k
 			return fmt.Errorf("lock account %d: %w", accountId, err)
 		}
 
+		// Has this exact movement already been applied? We hold the account's
+		// row lock, so no concurrent call for this account can slip in between
+		// this check and our insert below.
+		var applied int64
+		err = tx.QueryRow(ctx, `
+			SELECT amount FROM entries
+			WHERE transfer_id = $1 AND account_id = $2 AND kind = $3`,
+			transferID, accountId, kind,
+		).Scan(&applied)
+		switch {
+		case err == nil && applied == delta:
+			return nil // a replay: report the original success again
+		case err == nil:
+			return ErrIdempotencyConflict
+		case !errors.Is(err, pgx.ErrNoRows):
+			return fmt.Errorf("check entry: %w", err)
+		}
+
+		// The replay check must come before the balance check: a retried
+		// debit must succeed even if the account has been emptied since.
 		if balance+delta < 0 {
 			return ErrInsufficientFunds
 		}
