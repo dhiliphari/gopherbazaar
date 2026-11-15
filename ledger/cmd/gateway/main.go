@@ -21,9 +21,10 @@ import (
 )
 
 type application struct {
-	logger    *slog.Logger
-	accounts  accountsv1.AccountsServiceClient
-	transfers transfersv1.TransfersServiceClient
+	logger         *slog.Logger
+	accounts       accountsv1.AccountsServiceClient
+	transfers      transfersv1.TransfersServiceClient
+	requestTimeout time.Duration
 }
 
 func main() {
@@ -31,6 +32,7 @@ func main() {
 	accountsAddr := flag.String("accounts-addr", "localhost:9001", "accounts service base URL")
 	transfersAddr := flag.String("transfers-addr", "localhost:9002", "transfers service base URL")
 	debugAddr := flag.String("debug-addr", "localhost:6000", "debug (expvar, pprof) listen address")
+	requestTimeout := flag.Duration("request-timeout", 3*time.Second, "deadline for each incoming request")
 	flag.Parse()
 
 	logger := logx.New(os.Stdout, "gateway")
@@ -59,9 +61,10 @@ func main() {
 	defer transferConn.Close()
 
 	app := &application{
-		logger:    logger,
-		accounts:  accountsv1.NewAccountsServiceClient(accountsConn),
-		transfers: transfersv1.NewTransfersServiceClient(transferConn),
+		logger:         logger,
+		accounts:       accountsv1.NewAccountsServiceClient(accountsConn),
+		transfers:      transfersv1.NewTransfersServiceClient(transferConn),
+		requestTimeout: *requestTimeout,
 	}
 
 	srv := &http.Server{

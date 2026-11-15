@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -33,5 +34,17 @@ func LogRequests(logger *slog.Logger, next http.Handler) http.Handler {
 			"status", rec.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
+	})
+}
+
+// Timeout gives every request a deadline: d from now. Everything downstream
+// that takes the request context (gRPC calls, database queries) is cancelled
+// when it expires.
+func Timeout(d time.Duration, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), d)
+		defer cancel()
+
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
