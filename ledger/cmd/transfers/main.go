@@ -16,6 +16,7 @@ import (
 	"github.com/gopherbazaar/ledger/internal/grpcx"
 	"github.com/gopherbazaar/ledger/internal/httpx"
 	"github.com/gopherbazaar/ledger/internal/logx"
+	"github.com/gopherbazaar/ledger/internal/retry"
 	"github.com/gopherbazaar/ledger/internal/transfers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -64,7 +65,12 @@ func main() {
 	defer conn.Close()
 
 	store := transfers.NewStore(pool)
-	accountsClient := accountsclient.New(accountsv1.NewAccountsServiceClient(conn))
+	accountsClient := accountsclient.New(accountsv1.NewAccountsServiceClient(conn), retry.Policy{
+		MaxAttempts: 3,
+		BaseDelay:   50 * time.Millisecond,
+		MaxDelay:    500 * time.Millisecond,
+		Retryable:   accountsclient.IsTransient,
+	})
 	service := transfers.NewService(store, accountsClient, logger)
 
 	srv := grpc.NewServer(grpcx.ServerInterceptors(logger, *maxRPCTime))

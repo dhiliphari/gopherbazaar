@@ -11,6 +11,7 @@ import (
 	"github.com/gopherbazaar/ledger/internal/accounts"
 	"github.com/gopherbazaar/ledger/internal/accountsclient"
 	"github.com/gopherbazaar/ledger/internal/pgtest"
+	"github.com/gopherbazaar/ledger/internal/retry"
 	"github.com/gopherbazaar/ledger/internal/transfers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -39,7 +40,7 @@ func newClient(t *testing.T) (*accountsclient.Client, *accounts.Store) {
 	}
 	t.Cleanup(func() { conn.Close() })
 
-	return accountsclient.New(accountsv1.NewAccountsServiceClient(conn)), store
+	return accountsclient.New(accountsv1.NewAccountsServiceClient(conn), retry.Policy{MaxAttempts: 1}), store
 }
 
 func TestErrorContract(t *testing.T) {

@@ -64,6 +64,11 @@ chaos/blackhole:
 	curl -s -X POST $(TOXI)/proxies/accounts/toxics \
 		-d '{"name":"blackhole","type":"timeout","attributes":{"timeout":0}}'
 
+chaos/flaky:
+	curl -s -X POST $(TOXI)/proxies/accounts/toxics \
+		-d '{"name":"flaky","type":"latency","attributes":{"latency":800,"jitter":400}}'
+
 chaos/clear:
 	-curl -s -X DELETE $(TOXI)/proxies/accounts/toxics/slow
 	-curl -s -X DELETE $(TOXI)/proxies/accounts/toxics/blackhole
+	-curl -s -X DELETE $(TOXI)/proxies/accounts/toxics/flaky
